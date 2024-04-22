@@ -1,19 +1,19 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
 import { Toaster } from "react-hot-toast";
+import { useDisclosure } from "@nextui-org/react";
 import CogTooth from "./assets/cog-tooth";
 import ChatInterface from "./components/ChatInterface";
 import Errors from "./components/Errors";
 import LoadMessageModal from "./components/LoadMessageModal";
 import { Container, Orientation } from "./components/Resizable";
-import SettingModal from "./components/SettingModal";
 import Terminal from "./components/Terminal";
 import Workspace from "./components/Workspace";
 import { fetchMsgTotal } from "./services/session";
-import { fetchConfigurations, saveSettings } from "./services/settingsService";
+import { initializeAgent } from "./services/settingsService";
 import Socket from "./services/socket";
-import { ResConfigurations, ResFetchMsgTotal } from "./types/ResponseType";
-import { getCachedConfig } from "./utils/storage";
+import { ResFetchMsgTotal } from "./types/ResponseType";
+import SettingsModal from "./components/settings/SettingsModal";
 
 interface Props {
   setSettingOpen: (isOpen: boolean) => void;
@@ -36,30 +36,18 @@ function LeftNav({ setSettingOpen }: Props): JSX.Element {
 let initOnce = false;
 
 function App(): JSX.Element {
-  const [settingOpen, setSettingOpen] = useState(false);
+  const [isWarned, setIsWarned] = useState(false);
   const [loadMsgWarning, setLoadMsgWarning] = useState(false);
 
-  const getConfigurations = () => {
-    fetchConfigurations()
-      .then((data: ResConfigurations) => {
-        const settings = getCachedConfig();
-
-        saveSettings(
-          Object.fromEntries(
-            Object.entries(data).map(([key, value]) => [key, String(value)]),
-          ),
-          settings,
-          true,
-        );
-      })
-      .catch();
-  };
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   const getMsgTotal = () => {
+    if (isWarned) return;
     fetchMsgTotal()
       .then((data: ResFetchMsgTotal) => {
         if (data.msg_total > 0) {
           setLoadMsgWarning(true);
+          setIsWarned(true);
         }
       })
       .catch();
@@ -69,20 +57,17 @@ function App(): JSX.Element {
     if (initOnce) return;
     initOnce = true;
 
-    Socket.registerCallback("open", [getConfigurations, getMsgTotal]);
+    initializeAgent();
 
-    getConfigurations();
+    Socket.registerCallback("open", [getMsgTotal]);
+
     getMsgTotal();
   }, []);
-
-  const handleCloseModal = () => {
-    setSettingOpen(false);
-  };
 
   return (
     <div className="h-screen w-screen flex flex-col">
       <div className="flex grow bg-neutral-900 text-white min-h-0">
-        <LeftNav setSettingOpen={setSettingOpen} />
+        <LeftNav setSettingOpen={onOpen} />
         <Container
           orientation={Orientation.VERTICAL}
           className="grow p-3 py-3 pr-3 min-w-0"
@@ -106,7 +91,7 @@ function App(): JSX.Element {
       {/* This div is for the footer that will be added later
       <div className="h-8 w-full border-t border-border px-2" />
       */}
-      <SettingModal isOpen={settingOpen} onClose={handleCloseModal} />
+      <SettingsModal isOpen={isOpen} onOpenChange={onOpenChange} />
       <LoadMessageModal
         isOpen={loadMsgWarning}
         onClose={() => setLoadMsgWarning(false)}
